@@ -25,6 +25,12 @@ private enum READMEExamples {
         return VRoidHubClient(configuration: configuration)
     }
 
+    // README: Setup from a downloaded credential.json.bytes
+    static func setupFromCredentialFile() throws -> VRoidHubClient {
+        let url = Bundle.main.url(forResource: "credential.json", withExtension: "bytes")!
+        return VRoidHubClient(configuration: try VRoidHubConfiguration(credentialFileAt: url))
+    }
+
     // README: Sign in
     static func signIn(client: VRoidHubClient) async throws {
         // Restore a previous session, or run the OAuth flow.

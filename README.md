@@ -60,6 +60,16 @@ let configuration = VRoidHubConfiguration(
 let client = VRoidHubClient(configuration: configuration)
 ```
 
+Alternatively, load the `credential.json.bytes` file offered on the
+application management page. Its registered redirect URI decides the callback:
+a loopback URI starts the local callback server, a custom URL scheme is
+intercepted by `ASWebAuthenticationSession`.
+
+```swift
+let url = Bundle.main.url(forResource: "credential.json", withExtension: "bytes")!
+let client = VRoidHubClient(configuration: try VRoidHubConfiguration(credentialFileAt: url))
+```
+
 > [!NOTE]
 > A client secret embedded in a distributed app cannot be kept truly secret.
 > This mirrors the official Unity SDK's distribution model. If your app needs
