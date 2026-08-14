@@ -10,7 +10,7 @@ A native Swift SDK for the [VRoid Hub API](https://developer.vroid.com/api/).
 
 - Sign in with a VRoid Hub account, with session restore across launches
 - Native sign-in on both platforms: `ASWebAuthenticationSession` on iOS, the user's default browser on macOS
-- Fetch the account and its character models, with pagination
+- Fetch the account, its character models, hearted models, staff picks, and keyword search — with pagination, including lazy `for try await` iteration
 - Download model files, managing download licenses for you
 - Encrypted local cache: repeated loads don't re-download, and an updated model is never served stale
 - Conditions of use for both VRM 0.x and VRM 1.0 models, normalized into one structure ready to display
@@ -92,7 +92,31 @@ for model in page.items {
 if let next = page.next {
     page = try await client.characterModels(pageAt: next)
 }
+
+// Or iterate all pages lazily.
+for try await model in client.allCharacterModels() {
+    print(model.id)
+}
 ```
+
+Hearted models, staff picks, and keyword search work the same way. Hearts and
+search accept usage-condition filters:
+
+```swift
+let hearts = try await client.hearts(
+    options: VRoidHeartsOptions(filters: VRoidCharacterModelFilters(isDownloadable: true))
+)
+
+let results = try await client.searchCharacterModels(
+    options: VRoidCharacterModelSearchOptions(keyword: "cat", sort: .newestFirst)
+)
+
+let picks = try await client.staffPicks()
+```
+
+One exception: staff picks pages have their own shape, so follow their `next`
+URLs with `staffPicks(pageAt:)` instead of `characterModels(pageAt:)`
+(`allStaffPicks()` handles this for you).
 
 ### Download a model and load it with VRMKit
 

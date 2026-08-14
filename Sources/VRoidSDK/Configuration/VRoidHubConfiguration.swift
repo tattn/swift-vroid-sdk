@@ -47,8 +47,18 @@ public struct VRoidCacheConfiguration: Sendable {
     /// disabled — a freshly downloaded model would evict itself.
     public var maximumModelCount: Int
 
-    public init(maximumModelCount: Int = 10) {
+    /// Optional cap on the total encrypted bytes kept in the cache; `nil`
+    /// applies no byte limit. Least recently used models are evicted first.
+    /// The most recently stored model is never evicted, so a single model
+    /// larger than the cap can exceed it.
+    public var maximumTotalBytes: Int?
+
+    public init(maximumModelCount: Int = 10, maximumTotalBytes: Int? = nil) {
         precondition(maximumModelCount >= 1, "maximumModelCount must be at least 1")
+        if let maximumTotalBytes {
+            precondition(maximumTotalBytes >= 1, "maximumTotalBytes must be at least 1")
+        }
         self.maximumModelCount = maximumModelCount
+        self.maximumTotalBytes = maximumTotalBytes
     }
 }

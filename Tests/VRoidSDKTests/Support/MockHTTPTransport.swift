@@ -118,6 +118,35 @@ func makeTestDirectory() -> URL {
         .appending(path: "VRoidSDKTests-\(UUID().uuidString)", directoryHint: .isDirectory)
 }
 
+struct TestClientFixture {
+    let client: VRoidHubClient
+    let transport: MockHTTPTransport
+    let directory: URL
+
+    func cleanUp() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+func makeClientFixture(
+    callback: OAuthCallback = .customScheme(redirectURI: URL(string: "myapp://oauth/vroid")!),
+    token: OAuthToken? = OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: .distantFuture),
+    userAgent: (any AuthorizationUserAgent)? = nil,
+    now: Date = Date(timeIntervalSince1970: 1_000_000)
+) -> TestClientFixture {
+    let transport = MockHTTPTransport()
+    let directory = makeTestDirectory()
+    let client = makeTestClient(
+        transport: transport,
+        cacheDirectory: directory,
+        callback: callback,
+        token: token,
+        userAgent: userAgent,
+        now: now
+    )
+    return TestClientFixture(client: client, transport: transport, directory: directory)
+}
+
 func makeTestClient(
     transport: MockHTTPTransport,
     cacheDirectory: URL,

@@ -16,6 +16,8 @@ actor ModelCache {
         var downloadLicenseID: String
         var downloadLicenseExpiresAt: Date
         var lastAccessedAt: Date
+        /// Size of the sealed (encrypted) file, for byte-based eviction.
+        var sizeBytes: Int
     }
 
     private struct Metadata: Codable {
@@ -23,7 +25,7 @@ actor ModelCache {
         var entries: [String: Entry]
     }
 
-    private static let currentFormatVersion = 1
+    private static let currentFormatVersion = 2
 
     static var defaultDirectory: URL {
         // Scoped by app: on an unsandboxed system the caches directory is
@@ -118,7 +120,8 @@ actor ModelCache {
                 characterModelVersionID: license.characterModelVersionID,
                 downloadLicenseID: license.id,
                 downloadLicenseExpiresAt: license.expiresAt,
-                lastAccessedAt: dateProvider.now
+                lastAccessedAt: dateProvider.now,
+                sizeBytes: sealed.count
             )
         }
         evictIfNeeded()
@@ -254,13 +257,27 @@ actor ModelCache {
 
     private func evictIfNeeded() {
         let excessKeys = modifyMetadata { metadata -> [String] in
-            guard metadata.entries.count > configuration.maximumModelCount else { return [] }
-            let keys = metadata.entries
+            var totalBytes = metadata.entries.values.reduce(0) { $0 + $1.sizeBytes }
+            func overLimit() -> Bool {
+                if metadata.entries.count > configuration.maximumModelCount { return true }
+                if let maximumTotalBytes = configuration.maximumTotalBytes {
+                    return totalBytes > maximumTotalBytes
+                }
+                return false
+            }
+            guard overLimit() else { return [] }
+
+            var removed: [String] = []
+            let leastRecentlyUsedFirst = metadata.entries
                 .sorted { $0.value.lastAccessedAt < $1.value.lastAccessedAt }
-                .prefix(metadata.entries.count - configuration.maximumModelCount)
-                .map(\.key)
-            keys.forEach { metadata.entries.removeValue(forKey: $0) }
-            return keys
+            // Never evict down to zero: the most recently stored model must
+            // survive so that downloadModel's result stays readable.
+            for (key, entry) in leastRecentlyUsedFirst where overLimit() && metadata.entries.count > 1 {
+                metadata.entries.removeValue(forKey: key)
+                totalBytes -= entry.sizeBytes
+                removed.append(key)
+            }
+            return removed
         }
         for key in excessKeys {
             try? FileManager.default.removeItem(at: modelFileURL(forKey: key))

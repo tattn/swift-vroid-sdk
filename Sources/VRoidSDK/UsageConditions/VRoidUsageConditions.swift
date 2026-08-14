@@ -101,10 +101,9 @@ public struct VRoidUsageConditions: Sendable, Equatable {
 
     // MARK: VRM 1.0
 
-    /// Best-effort normalization of VRM 1.0 metadata. The live API returns
-    /// the VRM specification's camelCase keys and values as-is. Absent fields
-    /// become `.unspecified`; unrecognized values keep their raw form in
-    /// `.unknown`.
+    /// Best-effort normalization of VRM 1.0 metadata, which carries the VRM
+    /// specification's camelCase keys and values. Absent fields become
+    /// `.unspecified`; unrecognized values keep their raw form in `.unknown`.
     public init?(vrm10Meta meta: JSONValue) {
         guard case .object(let object) = meta else { return nil }
         func string(_ key: String) -> String? {

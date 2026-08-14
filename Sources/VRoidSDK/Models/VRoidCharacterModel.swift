@@ -5,8 +5,7 @@ public import Foundation
 /// Fields other than `id` are deliberately optional: a missing non-optional
 /// field would fail decoding for the entire page, while an optional degrades
 /// to a local `nil`. The API omits or nulls fields depending on model state
-/// (converting, restricted, another user's model), and documented-required
-/// fields have been observed as `null` in practice. Map to your own
+/// (converting, restricted, another user's model). Map to your own
 /// non-optional type at the app boundary if you need guarantees.
 public struct VRoidCharacterModel: Decodable, Sendable, Identifiable {
     public let id: String
@@ -126,5 +125,10 @@ public struct VRoidCharacterModelsOptions: Sendable {
         self.count = count
         self.maxID = maxID
         self.publication = publication
+    }
+
+    var queryItems: [URLQueryItem] {
+        paginationQueryItems(count: count, maxID: maxID)
+            + [URLQueryItem(name: "publication", value: publication.rawValue)]
     }
 }

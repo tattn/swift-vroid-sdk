@@ -131,24 +131,95 @@ public actor VRoidHubClient {
     public func characterModels(
         options: VRoidCharacterModelsOptions = VRoidCharacterModelsOptions()
     ) async throws -> VRoidPage<VRoidCharacterModel> {
-        var query: [URLQueryItem] = []
-        if let count = options.count {
-            query.append(URLQueryItem(name: "count", value: "\(count)"))
-        }
-        if let maxID = options.maxID {
-            query.append(URLQueryItem(name: "max_id", value: maxID))
-        }
-        query.append(URLQueryItem(name: "publication", value: options.publication.rawValue))
-        return try await api.page("/api/account/character_models", query: query)
+        try await api.page("/api/account/character_models", query: options.queryItems)
     }
 
-    /// Fetches the page referenced by ``VRoidPage/next``.
+    /// Fetches the page referenced by ``VRoidPage/next`` of any listing of
+    /// character models.
     public func characterModels(pageAt url: URL) async throws -> VRoidPage<VRoidCharacterModel> {
         try await api.page(at: url)
     }
 
+    /// Models the user hearted on VRoid Hub that are available to this
+    /// application. The official guidelines require presenting each model's
+    /// conditions of use before it is used.
+    public func hearts(options: VRoidHeartsOptions = VRoidHeartsOptions()) async throws -> VRoidPage<VRoidCharacterModel> {
+        let applicationID = URLQueryItem(name: "application_id", value: configuration.credential.clientID)
+        return try await api.page("/api/hearts", query: [applicationID] + options.queryItems)
+    }
+
+    /// Character models picked by the VRoid Hub staff.
+    ///
+    /// Staff picks pages wrap each model in a staff pick object, so follow
+    /// `next` URLs with ``staffPicks(pageAt:)``, not
+    /// ``characterModels(pageAt:)``.
+    public func staffPicks(
+        options: VRoidStaffPicksOptions = VRoidStaffPicksOptions()
+    ) async throws -> VRoidPage<VRoidCharacterModel> {
+        unwrapStaffPicks(try await api.page("/api/staff_picks", query: options.queryItems))
+    }
+
+    /// Fetches the page referenced by a staff picks `next` URL.
+    public func staffPicks(pageAt url: URL) async throws -> VRoidPage<VRoidCharacterModel> {
+        unwrapStaffPicks(try await api.page(at: url))
+    }
+
+    private func unwrapStaffPicks(_ page: VRoidPage<VRoidStaffPick>) -> VRoidPage<VRoidCharacterModel> {
+        VRoidPage(items: page.items.compactMap(\.characterModel), next: page.next)
+    }
+
+    /// Searches public character models by keyword.
+    public func searchCharacterModels(
+        options: VRoidCharacterModelSearchOptions
+    ) async throws -> VRoidPage<VRoidCharacterModel> {
+        try await api.page("/api/search/character_models", query: options.queryItems)
+    }
+
     public func characterModel(id: String) async throws -> VRoidCharacterModelDetail {
         try await api.get("/api/character_models/\(id)")
+    }
+
+    // MARK: - Lazy pagination
+
+    /// All of the user's character models, fetched page by page on demand.
+    public nonisolated func allCharacterModels(
+        options: VRoidCharacterModelsOptions = VRoidCharacterModelsOptions()
+    ) -> VRoidPageSequence<VRoidCharacterModel> {
+        pageSequence { try await self.characterModels(options: options) }
+    }
+
+    /// All hearted models available to this application, fetched page by
+    /// page on demand.
+    public nonisolated func allHearts(
+        options: VRoidHeartsOptions = VRoidHeartsOptions()
+    ) -> VRoidPageSequence<VRoidCharacterModel> {
+        pageSequence { try await self.hearts(options: options) }
+    }
+
+    /// All staff picks, fetched page by page on demand.
+    public nonisolated func allStaffPicks(
+        options: VRoidStaffPicksOptions = VRoidStaffPicksOptions()
+    ) -> VRoidPageSequence<VRoidCharacterModel> {
+        VRoidPageSequence(
+            firstPage: { try await self.staffPicks(options: options) },
+            nextPage: { try await self.staffPicks(pageAt: $0) }
+        )
+    }
+
+    /// All search results, fetched page by page on demand.
+    public nonisolated func allSearchResults(
+        options: VRoidCharacterModelSearchOptions
+    ) -> VRoidPageSequence<VRoidCharacterModel> {
+        pageSequence { try await self.searchCharacterModels(options: options) }
+    }
+
+    private nonisolated func pageSequence(
+        firstPage: @escaping @Sendable () async throws -> VRoidPage<VRoidCharacterModel>
+    ) -> VRoidPageSequence<VRoidCharacterModel> {
+        VRoidPageSequence(
+            firstPage: firstPage,
+            nextPage: { try await self.characterModels(pageAt: $0) }
+        )
     }
 
     // MARK: - Download licenses

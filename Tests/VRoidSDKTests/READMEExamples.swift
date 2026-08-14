@@ -49,6 +49,25 @@ private enum READMEExamples {
             page = try await client.characterModels(pageAt: next)
         }
         _ = page
+
+        // Or iterate all pages lazily.
+        for try await model in client.allCharacterModels() {
+            print(model.id)
+        }
+    }
+
+    // README: Hearted models, staff picks, and keyword search
+    static func otherListings(client: VRoidHubClient) async throws {
+        let hearts = try await client.hearts(
+            options: VRoidHeartsOptions(filters: VRoidCharacterModelFilters(isDownloadable: true))
+        )
+
+        let results = try await client.searchCharacterModels(
+            options: VRoidCharacterModelSearchOptions(keyword: "cat", sort: .newestFirst)
+        )
+
+        let picks = try await client.staffPicks()
+        _ = (hearts, results, picks)
     }
 
     // README: Download a model and load it with VRMKit

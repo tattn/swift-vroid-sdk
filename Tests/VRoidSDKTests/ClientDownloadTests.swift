@@ -4,29 +4,6 @@ import Testing
 @testable import VRoidSDK
 
 struct ClientDownloadTests {
-    private struct Fixture {
-        let client: VRoidHubClient
-        let transport: MockHTTPTransport
-        let directory: URL
-
-        func cleanUp() {
-            try? FileManager.default.removeItem(at: directory)
-        }
-    }
-
-    private func makeFixture(now: Date = Date(timeIntervalSince1970: 1_000_000)) -> Fixture {
-        let transport = MockHTTPTransport()
-        let directory = makeTestDirectory()
-        let token = OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(3600))
-        let client = makeTestClient(
-            transport: transport,
-            cacheDirectory: directory,
-            token: token,
-            now: now
-        )
-        return Fixture(client: client, transport: transport, directory: directory)
-    }
-
     private struct StubModel: VRoidCharacterModelDownloadable {
         let characterModelID: String
         let latestVersionID: String?
@@ -66,7 +43,7 @@ struct ClientDownloadTests {
 
     @Test
     func downloadsViaLicenseAndCaches() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         let fileBytes = Data("vrm-file".utf8)
         stubDownloadEndpoints(fixture.transport, fileBytes: fileBytes)
@@ -83,7 +60,7 @@ struct ClientDownloadTests {
 
     @Test
     func reusesCacheForKnownVersionWithoutNetwork() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         stubDownloadEndpoints(fixture.transport)
 
@@ -102,7 +79,7 @@ struct ClientDownloadTests {
 
     @Test
     func skipsFileDownloadWhenLicenseVersionMatchesCache() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         let licenseCounter = Counter()
         fixture.transport.route(method: "POST", path: "/api/download_licenses") { _ in
@@ -145,7 +122,7 @@ struct ClientDownloadTests {
 
     @Test
     func withModelFileCleansUpTemporaryFile() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         let fileBytes = Data("vrm-file".utf8)
         stubDownloadEndpoints(fixture.transport, fileBytes: fileBytes)
@@ -164,7 +141,7 @@ struct ClientDownloadTests {
 
     @Test
     func retriesOnceAfterUnauthorized() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
 
         let counter = Counter()
@@ -237,7 +214,7 @@ struct ClientDownloadTests {
 
     @Test
     func rejectsPaginationURLsOutsideTheAPIOrigin() async {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         let urls = [
             URL(string: "http://hub.vroid.com/api/account/character_models")!,
@@ -258,7 +235,7 @@ struct ClientDownloadTests {
 
     @Test
     func doesNotCoalesceDownloadsForDifferentKnownVersions() async throws {
-        let fixture = makeFixture()
+        let fixture = makeClientFixture()
         defer { fixture.cleanUp() }
         let counter = Counter()
         let firstLicenseRequested = AsyncStream.makeStream(of: Void.self)

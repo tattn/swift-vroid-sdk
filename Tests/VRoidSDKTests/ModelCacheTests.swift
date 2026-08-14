@@ -6,11 +6,15 @@ struct ModelCacheTests {
     private func makeCache(
         directory: URL,
         maximumModelCount: Int = 10,
+        maximumTotalBytes: Int? = nil,
         now: Date = Date(timeIntervalSince1970: 1_000_000)
     ) -> ModelCache {
         ModelCache(
             directory: directory,
-            configuration: VRoidCacheConfiguration(maximumModelCount: maximumModelCount),
+            configuration: VRoidCacheConfiguration(
+                maximumModelCount: maximumModelCount,
+                maximumTotalBytes: maximumTotalBytes
+            ),
             cryptor: ModelCacheCryptor(keyProvider: StaticCacheKeyProvider()),
             dateProvider: IncrementingDateProvider(start: now)
         )
@@ -120,6 +124,37 @@ struct ModelCacheTests {
         let leftover = try await cache.makeTemporaryPlaintextFile(data: Data("leftover".utf8))
         await cache.purgeTemporaryDirectory()
         #expect(!FileManager.default.fileExists(atPath: leftover.path))
+    }
+
+    @Test
+    func evictsLeastRecentlyUsedBeyondByteLimit() async throws {
+        let directory = makeTestDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // AES-GCM adds a fixed overhead (~28 bytes) per file; 1KB payloads
+        // with a 2.5KB cap keep two models under it and three above it.
+        let cache = makeCache(directory: directory, maximumTotalBytes: 2_560)
+        let payload = Data(repeating: 0xEF, count: 1_024)
+
+        try await cache.store(modelData: payload, license: makeLicense(modelID: "m1"))
+        try await cache.store(modelData: payload, license: makeLicense(modelID: "m2"))
+        try await cache.store(modelData: payload, license: makeLicense(modelID: "m3"))
+
+        #expect(await cache.modelData(modelID: "m1", versionID: "v1") == nil)
+        #expect(await cache.modelData(modelID: "m2", versionID: "v1") != nil)
+        #expect(await cache.modelData(modelID: "m3", versionID: "v1") != nil)
+    }
+
+    @Test
+    func singleModelLargerThanByteLimitIsKept() async throws {
+        let directory = makeTestDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = makeCache(directory: directory, maximumTotalBytes: 100)
+        let payload = Data(repeating: 0xEF, count: 1_024)
+
+        try await cache.store(modelData: payload, license: makeLicense(modelID: "m1"))
+
+        // The most recently stored model must survive even over the cap.
+        #expect(await cache.modelData(modelID: "m1", versionID: "v1") == payload)
     }
 
     @Test
