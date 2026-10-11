@@ -32,16 +32,23 @@ final class WebAuthenticationUserAgent: NSObject, AuthorizationUserAgent {
         let authorizationURL = try authorizationURL(redirectURI)
         defer { activeSession = nil }
         return try await withCheckedThrowingContinuation { continuation in
+            // `start()` can both return false and invoke the completion handler
+            // with an error (e.g. while the app is returning to the foreground).
+            var pendingContinuation: CheckedContinuation<URL, any Error>? = continuation
+            func finish(_ result: Result<URL, any Error>) {
+                pendingContinuation?.resume(with: result)
+                pendingContinuation = nil
+            }
             let session = ASWebAuthenticationSession(
                 url: authorizationURL,
                 callback: .customScheme(scheme)
             ) { callbackURL, error in
                 if let callbackURL {
-                    continuation.resume(returning: callbackURL)
+                    finish(.success(callbackURL))
                 } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
-                    continuation.resume(throwing: VRoidHubError.authenticationCancelled)
+                    finish(.failure(VRoidHubError.authenticationCancelled))
                 } else {
-                    continuation.resume(throwing: VRoidHubError.authenticationFailed)
+                    finish(.failure(VRoidHubError.authenticationFailed))
                 }
             }
             session.presentationContextProvider = self
@@ -49,7 +56,7 @@ final class WebAuthenticationUserAgent: NSObject, AuthorizationUserAgent {
             activeSession = session
             if !session.start() {
                 activeSession = nil
-                continuation.resume(throwing: VRoidHubError.authenticationFailed)
+                finish(.failure(VRoidHubError.authenticationFailed))
             }
         }
     }

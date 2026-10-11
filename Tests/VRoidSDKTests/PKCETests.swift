@@ -11,20 +11,15 @@ struct PKCETests {
     }
 
     @Test
-    func generatedVerifierConformsToRFC7636() {
+    func generatedVerifiersConformToRFC7636AndAreUnique() {
         let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-        for _ in 0..<50 {
-            let pkce = PKCE.generate()
+        let generated = (0..<100).map { _ in PKCE.generate() }
+        for pkce in generated {
             #expect((43...128).contains(pkce.codeVerifier.count))
             #expect(pkce.codeVerifier.unicodeScalars.allSatisfy(allowed.contains))
             #expect(!pkce.codeChallenge.isEmpty)
         }
-    }
-
-    @Test
-    func generatedVerifiersAreUnique() {
-        let verifiers = Set((0..<100).map { _ in PKCE.generate().codeVerifier })
-        #expect(verifiers.count == 100)
+        #expect(Set(generated.map(\.codeVerifier)).count == generated.count)
     }
 }
 
