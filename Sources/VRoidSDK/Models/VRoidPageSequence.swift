@@ -1,4 +1,5 @@
 import Foundation
+public import VRoidSDKCore
 
 /// Lazily iterates the items of a paginated listing, fetching the next page
 /// by following `_links.next` whenever the current one is exhausted.

@@ -1,19 +1,22 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct TokenManagerTests {
     private func makeManager(
-        token: OAuthToken?,
+        token: VRoidOAuthToken?,
         transport: MockHTTPTransport,
         store: (any TokenStore)? = nil,
         now: Date = Date(timeIntervalSince1970: 1_000_000)
     ) -> TokenManager {
         let dateProvider = FixedDateProvider(now: now)
         let oauth = OAuthService(
-            api: APIClient(transport: transport, dateProvider: dateProvider),
-            credential: VRoidCredential(clientID: "cid", clientSecret: "secret"),
-            dateProvider: dateProvider
+            api: VRoidHubAPI(
+                credential: VRoidCredential(clientID: "cid", clientSecret: "secret"),
+                dateProvider: dateProvider
+            ),
+            transport: transport
         )
         let tokenStore: any TokenStore = store ?? InMemoryTokenStore(token: token)
         return TokenManager(store: tokenStore, oauth: oauth, dateProvider: dateProvider)
@@ -32,7 +35,7 @@ struct TokenManagerTests {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let transport = MockHTTPTransport()
         let manager = makeManager(
-            token: OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(3600)),
+            token: VRoidOAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(3600)),
             transport: transport,
             now: now
         )
@@ -46,7 +49,7 @@ struct TokenManagerTests {
         let transport = MockHTTPTransport()
         stubRefresh(transport, accessToken: "a2")
         let manager = makeManager(
-            token: OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(-10)),
+            token: VRoidOAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(-10)),
             transport: transport,
             now: now
         )
@@ -60,7 +63,7 @@ struct TokenManagerTests {
         let transport = MockHTTPTransport()
         stubRefresh(transport, accessToken: "a2")
         let manager = makeManager(
-            token: OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(-10)),
+            token: VRoidOAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: now.addingTimeInterval(-10)),
             transport: transport,
             now: now
         )
@@ -83,7 +86,7 @@ struct TokenManagerTests {
     @Test
     func reportsPersistenceFailureToAllRefreshWaiters() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let staleToken = OAuthToken(
+        let staleToken = VRoidOAuthToken(
             accessToken: "a1",
             refreshToken: "r1",
             expiresAt: now.addingTimeInterval(-10)
@@ -121,7 +124,7 @@ struct TokenManagerTests {
         let transport = MockHTTPTransport()
         stubRefresh(transport, accessToken: "a3")
         let manager = makeManager(
-            token: OAuthToken(accessToken: "a2", refreshToken: "r1", expiresAt: now.addingTimeInterval(3600)),
+            token: VRoidOAuthToken(accessToken: "a2", refreshToken: "r1", expiresAt: now.addingTimeInterval(3600)),
             transport: transport,
             now: now
         )
@@ -135,7 +138,7 @@ struct TokenManagerTests {
     @Test
     func clearDuringRefreshDoesNotResurrectToken() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let expiredToken = OAuthToken(
+        let expiredToken = VRoidOAuthToken(
             accessToken: "a1",
             refreshToken: "r1",
             expiresAt: now.addingTimeInterval(-10)
@@ -173,7 +176,7 @@ struct TokenManagerTests {
     @Test
     func staleRefreshDoesNotOverwriteNewerSession() async throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let expiredToken = OAuthToken(
+        let expiredToken = VRoidOAuthToken(
             accessToken: "a1",
             refreshToken: "r1",
             expiresAt: now.addingTimeInterval(-10)
@@ -197,7 +200,7 @@ struct TokenManagerTests {
         for await _ in requested.stream {}
 
         // A new sign-in replaces the session while the refresh is in flight.
-        let signedInToken = OAuthToken(
+        let signedInToken = VRoidOAuthToken(
             accessToken: "a3",
             refreshToken: "r3",
             expiresAt: now.addingTimeInterval(3600)
@@ -225,17 +228,17 @@ struct TokenManagerTests {
 }
 
 private final class SaveFailingTokenStore: TokenStore {
-    private let token: OAuthToken?
+    private let token: VRoidOAuthToken?
 
-    init(token: OAuthToken?) {
+    init(token: VRoidOAuthToken?) {
         self.token = token
     }
 
-    func load() throws -> OAuthToken? {
+    func load() throws -> VRoidOAuthToken? {
         token
     }
 
-    func save(_ token: OAuthToken) throws {
+    func save(_ token: VRoidOAuthToken) throws {
         throw PersistenceError.failed
     }
 

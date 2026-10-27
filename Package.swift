@@ -13,14 +13,25 @@ let package = Package(
             name: "VRoidSDK",
             targets: ["VRoidSDK"]
         ),
+        // The platform-independent part: API requests and response decoding,
+        // usage conditions, and the model cache, without network, keychain or
+        // cryptography. Builds wherever FoundationEssentials does (e.g. Android).
+        .library(
+            name: "VRoidSDKCore",
+            targets: ["VRoidSDKCore"]
+        ),
     ],
     targets: [
         .target(
-            name: "VRoidSDK"
+            name: "VRoidSDKCore"
+        ),
+        .target(
+            name: "VRoidSDK",
+            dependencies: ["VRoidSDKCore"]
         ),
         .testTarget(
             name: "VRoidSDKTests",
-            dependencies: ["VRoidSDK"]
+            dependencies: ["VRoidSDK", "VRoidSDKCore"]
         ),
     ]
 )

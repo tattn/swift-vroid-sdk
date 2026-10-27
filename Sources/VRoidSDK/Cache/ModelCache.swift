@@ -1,32 +1,9 @@
 import Foundation
+import VRoidSDKCore
 
-/// Encrypted persistent cache for downloaded model files.
-///
-/// Layout:
-/// ```
-/// <directory>/
-/// ├── metadata.json
-/// ├── Models/<modelID>_<versionID>.bin   (AES-GCM sealed)
-/// └── tmp/                               (plaintext scratch, purged on init)
-/// ```
+/// The model cache of ``VRoidHubClient``: ``VRoidModelCache`` with the files
+/// sealed by AES-GCM under a Keychain key.
 actor ModelCache {
-    struct Entry: Codable, Sendable {
-        let characterModelID: String
-        let characterModelVersionID: String
-        var downloadLicenseID: String
-        var downloadLicenseExpiresAt: Date
-        var lastAccessedAt: Date
-        /// Size of the sealed (encrypted) file, for byte-based eviction.
-        var sizeBytes: Int
-    }
-
-    private struct Metadata: Codable {
-        var formatVersion: Int
-        var entries: [String: Entry]
-    }
-
-    private static let currentFormatVersion = 2
-
     static var defaultDirectory: URL {
         // Scoped by app: on an unsandboxed system the caches directory is
         // shared, and apps cannot decrypt each other's cache (each has its
@@ -38,13 +15,8 @@ actor ModelCache {
             .appending(path: "VRoidSDK", directoryHint: .isDirectory)
     }
 
-    private let directory: URL
-    private let configuration: VRoidCacheConfiguration
+    private let files: VRoidModelCache
     private let cryptor: ModelCacheCryptor
-    private let dateProvider: any DateProviding
-
-    private var metadata: Metadata?
-    private var didPurgeLeftovers = false
 
     init(
         directory: URL,
@@ -52,235 +24,38 @@ actor ModelCache {
         cryptor: ModelCacheCryptor,
         dateProvider: any DateProviding
     ) {
-        self.directory = directory
-        self.configuration = configuration
+        self.files = VRoidModelCache(directory: directory, configuration: configuration, dateProvider: dateProvider)
         self.cryptor = cryptor
-        self.dateProvider = dateProvider
     }
 
-    // MARK: Lookup
-
-    /// Returns the entry for the given model version if its download license
-    /// has not expired. Expired or missing entries are treated as cache misses.
-    func validEntry(modelID: String, versionID: String) -> Entry? {
-        purgeLeftoversIfNeeded()
-        let key = Self.key(modelID: modelID, versionID: versionID)
-        guard let entry = loadMetadata().entries[key] else { return nil }
-        guard entry.downloadLicenseExpiresAt > dateProvider.now else {
-            // Keep the encrypted file: a freshly issued license revalidates
-            // it via updateLicenseIfPresent(_:) without re-downloading.
-            return nil
-        }
-        guard FileManager.default.fileExists(atPath: modelFileURL(forKey: key).path) else {
-            removeEntry(forKey: key)
-            return nil
-        }
-        return entry
+    func validEntry(modelID: String, versionID: String) -> VRoidDownloadLicense? {
+        files.validLicense(modelID: modelID, versionID: versionID)
     }
 
-    /// Decrypts and returns the cached model data, updating its LRU timestamp.
-    /// Corrupted entries are removed and reported as a miss.
+    /// Decrypts and returns the cached model data. Corrupted entries are
+    /// removed and reported as a miss.
     func modelData(modelID: String, versionID: String) -> Data? {
-        purgeLeftoversIfNeeded()
-        let key = Self.key(modelID: modelID, versionID: versionID)
-        guard loadMetadata().entries[key] != nil else { return nil }
-        let fileURL = modelFileURL(forKey: key)
-        // Map the sealed file instead of copying it into a heap buffer;
-        // decryption already allocates a full-size plaintext buffer.
-        guard let sealed = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
-              let plaintext = try? cryptor.open(sealed)
-        else {
-            removeEntry(forKey: key)
+        guard let sealed = files.sealedData(modelID: modelID, versionID: versionID) else { return nil }
+        guard let plaintext = try? cryptor.open(sealed) else {
+            files.remove(modelID: modelID, versionID: versionID)
             return nil
         }
-        touch(key: key)
         return plaintext
     }
 
-    // MARK: Storage
-
     func store(modelData: Data, license: VRoidDownloadLicense) throws {
-        purgeLeftoversIfNeeded()
-        // Load metadata first: the initial load may wipe the models directory
-        // when the metadata file is missing or incompatible.
-        _ = loadMetadata()
-
-        let key = Self.key(modelID: license.characterModelID, versionID: license.characterModelVersionID)
-        let sealed = try cryptor.seal(modelData)
-        do {
-            try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
-            try sealed.write(to: modelFileURL(forKey: key), options: .atomic)
-        } catch {
-            throw VRoidHubError.cacheFailed
-        }
-
-        modifyMetadata { metadata in
-            metadata.entries[key] = Entry(
-                characterModelID: license.characterModelID,
-                characterModelVersionID: license.characterModelVersionID,
-                downloadLicenseID: license.id,
-                downloadLicenseExpiresAt: license.expiresAt,
-                lastAccessedAt: dateProvider.now,
-                sizeBytes: sealed.count
-            )
-        }
-        evictIfNeeded()
-        saveMetadata()
+        try files.store(sealedData: cryptor.seal(modelData), license: license)
     }
 
-    /// Replaces the license metadata when the exact model version is already
-    /// cached. The newly issued license authorizes reusing the encrypted bytes.
     func updateLicenseIfPresent(_ license: VRoidDownloadLicense) -> Bool {
-        purgeLeftoversIfNeeded()
-        let key = Self.key(
-            modelID: license.characterModelID,
-            versionID: license.characterModelVersionID
-        )
-        guard loadMetadata().entries[key] != nil,
-              FileManager.default.fileExists(atPath: modelFileURL(forKey: key).path)
-        else {
-            return false
-        }
-        modifyMetadata { metadata in
-            metadata.entries[key]?.downloadLicenseID = license.id
-            metadata.entries[key]?.downloadLicenseExpiresAt = license.expiresAt
-            metadata.entries[key]?.lastAccessedAt = dateProvider.now
-        }
-        saveMetadata()
-        return true
-    }
-
-    // MARK: Temporary plaintext files
-
-    /// Removes leftover plaintext files from previous runs (e.g. after a crash).
-    func purgeTemporaryDirectory() {
-        try? FileManager.default.removeItem(at: temporaryDirectory)
+        files.updateLicenseIfPresent(license)
     }
 
     func makeTemporaryPlaintextFile(data: Data) throws -> URL {
-        purgeLeftoversIfNeeded()
-        do {
-            try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
-            let url = temporaryDirectory.appending(path: "\(UUID().uuidString).vrm")
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            throw VRoidHubError.cacheFailed
-        }
+        try files.makeTemporaryPlaintextFile(data: data)
     }
 
     func removeTemporaryFile(at url: URL) {
-        // Only delete files the cache itself created.
-        guard url.deletingLastPathComponent() == temporaryDirectory else { return }
-        try? FileManager.default.removeItem(at: url)
-    }
-
-    // MARK: Internals
-
-    private static func key(modelID: String, versionID: String) -> String {
-        "\(modelID)_\(versionID)"
-    }
-
-    /// One-time cleanup of leftover plaintext files from previous runs,
-    /// deferred to the first cache operation so that client construction
-    /// does not pay disk I/O.
-    private func purgeLeftoversIfNeeded() {
-        guard !didPurgeLeftovers else { return }
-        didPurgeLeftovers = true
-        purgeTemporaryDirectory()
-    }
-
-    private var modelsDirectory: URL {
-        directory.appending(path: "Models", directoryHint: .isDirectory)
-    }
-
-    private var temporaryDirectory: URL {
-        directory.appending(path: "tmp", directoryHint: .isDirectory)
-    }
-
-    private var metadataURL: URL {
-        directory.appending(path: "metadata.json")
-    }
-
-    private func modelFileURL(forKey key: String) -> URL {
-        modelsDirectory.appending(path: "\(key).bin")
-    }
-
-    private func loadMetadata() -> Metadata {
-        if let metadata { return metadata }
-        let loaded: Metadata
-        if let data = try? Data(contentsOf: metadataURL),
-           let decoded = try? JSONDecoder().decode(Metadata.self, from: data),
-           decoded.formatVersion == Self.currentFormatVersion {
-            loaded = decoded
-        } else {
-            // Missing, corrupted, or incompatible metadata: start fresh.
-            loaded = Metadata(formatVersion: Self.currentFormatVersion, entries: [:])
-            try? FileManager.default.removeItem(at: modelsDirectory)
-        }
-        metadata = loaded
-        return loaded
-    }
-
-    private func saveMetadata() {
-        guard let metadata else { return }
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(metadata)
-            try data.write(to: metadataURL, options: .atomic)
-        } catch {
-            // A failed metadata write degrades to a cache miss on next launch.
-        }
-    }
-
-    /// Single mutation path for the metadata; guarantees it is loaded first.
-    @discardableResult
-    private func modifyMetadata<T>(_ mutate: (inout Metadata) -> T) -> T {
-        var loaded = loadMetadata()
-        let result = mutate(&loaded)
-        metadata = loaded
-        return result
-    }
-
-    private func touch(key: String) {
-        // Updated in memory only and persisted opportunistically (on store
-        // and removal); losing a touch merely degrades LRU ordering, which
-        // is not worth a file write per cache read.
-        modifyMetadata { $0.entries[key]?.lastAccessedAt = dateProvider.now }
-    }
-
-    private func removeEntry(forKey key: String) {
-        modifyMetadata { $0.entries.removeValue(forKey: key) }
-        try? FileManager.default.removeItem(at: modelFileURL(forKey: key))
-        saveMetadata()
-    }
-
-    private func evictIfNeeded() {
-        let excessKeys = modifyMetadata { metadata -> [String] in
-            var totalBytes = metadata.entries.values.reduce(0) { $0 + $1.sizeBytes }
-            func overLimit() -> Bool {
-                if metadata.entries.count > configuration.maximumModelCount { return true }
-                if let maximumTotalBytes = configuration.maximumTotalBytes {
-                    return totalBytes > maximumTotalBytes
-                }
-                return false
-            }
-            guard overLimit() else { return [] }
-
-            var removed: [String] = []
-            let leastRecentlyUsedFirst = metadata.entries
-                .sorted { $0.value.lastAccessedAt < $1.value.lastAccessedAt }
-            // Never evict down to zero: the most recently stored model must
-            // survive so that downloadModel's result stays readable.
-            for (key, entry) in leastRecentlyUsedFirst where overLimit() && metadata.entries.count > 1 {
-                metadata.entries.removeValue(forKey: key)
-                totalBytes -= entry.sizeBytes
-                removed.append(key)
-            }
-            return removed
-        }
-        for key in excessKeys {
-            try? FileManager.default.removeItem(at: modelFileURL(forKey: key))
-        }
+        files.removeTemporaryFile(at: url)
     }
 }

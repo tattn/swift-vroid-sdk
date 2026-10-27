@@ -2,12 +2,13 @@ import CryptoKit
 import Foundation
 import Synchronization
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 /// Routes requests to registered handlers and records every request.
 final class MockHTTPTransport: HTTPTransport {
     struct Route {
         let matches: @Sendable (URLRequest) -> Bool
-        let respond: @Sendable (URLRequest) async throws -> HTTPResponse
+        let respond: @Sendable (URLRequest) async throws -> VRoidHubResponse
     }
 
     private struct State {
@@ -20,7 +21,7 @@ final class MockHTTPTransport: HTTPTransport {
     func route(
         method: String,
         path: String,
-        respond: @escaping @Sendable (URLRequest) async throws -> HTTPResponse
+        respond: @escaping @Sendable (URLRequest) async throws -> VRoidHubResponse
     ) {
         let route = Route(matches: Self.matcher(method: method, path: path), respond: respond)
         state.withLock { $0.routes.append(route) }
@@ -35,7 +36,7 @@ final class MockHTTPTransport: HTTPTransport {
         return state.withLock { $0.requests.filter(matches) }
     }
 
-    func send(_ request: URLRequest, followRedirects: Bool) async throws -> HTTPResponse {
+    func send(_ request: URLRequest, followRedirects: Bool) async throws -> VRoidHubResponse {
         let route = state.withLock { state in
             state.requests.append(request)
             return state.routes.first { $0.matches(request) }
@@ -72,17 +73,17 @@ final class IncrementingDateProvider: DateProviding {
 }
 
 final class InMemoryTokenStore: TokenStore {
-    private let token: Mutex<OAuthToken?>
+    private let token: Mutex<VRoidOAuthToken?>
 
-    init(token: OAuthToken? = nil) {
+    init(token: VRoidOAuthToken? = nil) {
         self.token = Mutex(token)
     }
 
-    func load() throws -> OAuthToken? {
+    func load() throws -> VRoidOAuthToken? {
         token.withLock { $0 }
     }
 
-    func save(_ newToken: OAuthToken) throws {
+    func save(_ newToken: VRoidOAuthToken) throws {
         token.withLock { $0 = newToken }
     }
 
@@ -103,9 +104,9 @@ struct StaticCacheKeyProvider: CacheKeyProviding {
     }
 }
 
-extension HTTPResponse {
-    static func json(_ string: String, statusCode: Int = 200) -> HTTPResponse {
-        HTTPResponse(
+extension VRoidHubResponse {
+    static func json(_ string: String, statusCode: Int = 200) -> VRoidHubResponse {
+        VRoidHubResponse(
             statusCode: statusCode,
             headers: ["Content-Type": "application/json"],
             body: Data(string.utf8)
@@ -130,7 +131,7 @@ struct TestClientFixture {
 
 func makeClientFixture(
     callback: OAuthCallback = .customScheme(redirectURI: URL(string: "myapp://oauth/vroid")!),
-    token: OAuthToken? = OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: .distantFuture),
+    token: VRoidOAuthToken? = VRoidOAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: .distantFuture),
     userAgent: (any AuthorizationUserAgent)? = nil,
     now: Date = Date(timeIntervalSince1970: 1_000_000)
 ) -> TestClientFixture {
@@ -151,7 +152,7 @@ func makeTestClient(
     transport: MockHTTPTransport,
     cacheDirectory: URL,
     callback: OAuthCallback = .customScheme(redirectURI: URL(string: "myapp://oauth/vroid")!),
-    token: OAuthToken? = nil,
+    token: VRoidOAuthToken? = nil,
     userAgent: (any AuthorizationUserAgent)? = nil,
     now: Date = Date(timeIntervalSince1970: 1_000_000)
 ) -> VRoidHubClient {

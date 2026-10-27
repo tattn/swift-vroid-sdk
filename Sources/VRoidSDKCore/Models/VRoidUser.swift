@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+public import FoundationEssentials
+#else
 public import Foundation
+#endif
 
 public struct VRoidUser: Decodable, Sendable, Identifiable {
     public let id: String
@@ -28,4 +32,19 @@ public struct VRoidImage: Decodable, Sendable {
     public let url2x: URL?
     public let width: Int?
     public let height: Int?
+}
+
+extension VRoidImageSet {
+    /// The URL of a small image. Not every variant is present: user icons
+    /// come only as sq170/sq50 on the live API, so this falls through the
+    /// whole set.
+    public var thumbnailURL: URL? {
+        sq300?.url ?? w300?.url ?? sq170?.url ?? sq150?.url
+            ?? sq600?.url ?? w600?.url ?? original?.url ?? sq50?.url
+    }
+
+    /// The URL of the largest image, for detail views.
+    public var largeURL: URL? {
+        w600?.url ?? original?.url ?? sq600?.url ?? thumbnailURL
+    }
 }

@@ -1,6 +1,10 @@
+#if canImport(FoundationEssentials)
+public import FoundationEssentials
+#else
 public import Foundation
+#endif
 
-/// Errors thrown by ``VRoidHubClient``.
+/// Errors thrown by ``VRoidHubCall/result(from:)`` and the `VRoidSDK` client.
 public enum VRoidHubError: Error, Sendable {
     /// The user cancelled the sign-in flow.
     case authenticationCancelled

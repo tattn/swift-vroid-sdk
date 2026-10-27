@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 @Suite
 struct AuthenticationTests {
@@ -42,16 +43,15 @@ struct AuthenticationTests {
         transport.route(method: "POST", path: "/oauth/revoke") { request in
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer access-token")
             #expect(Self.formValue("token", in: request) == "access-token")
-            return HTTPResponse(statusCode: 200)
+            return VRoidHubResponse(statusCode: 200)
         }
         let dateProvider = FixedDateProvider(now: Date(timeIntervalSince1970: 1_000_000))
         let oauth = OAuthService(
-            api: APIClient(transport: transport, dateProvider: dateProvider),
-            credential: VRoidCredential(
-                clientID: "cid",
-                clientSecret: "secret"
+            api: VRoidHubAPI(
+                credential: VRoidCredential(clientID: "cid", clientSecret: "secret"),
+                dateProvider: dateProvider
             ),
-            dateProvider: dateProvider
+            transport: transport
         )
 
         try await oauth.revoke(accessToken: "access-token")

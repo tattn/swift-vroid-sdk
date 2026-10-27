@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import VRoidSDKCore
 import Network
 import Synchronization
 

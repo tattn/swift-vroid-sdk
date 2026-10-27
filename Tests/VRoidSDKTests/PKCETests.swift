@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct PKCETests {
     @Test
@@ -27,7 +28,7 @@ struct OAuthCallbackValidatorTests {
     @Test
     func extractsAuthorizationCode() throws {
         let url = URL(string: "myapp://oauth/vroid?code=abc123&state=expected")!
-        let code = try OAuthCallbackValidator.authorizationCode(from: url, expectedState: "expected")
+        let code = try VRoidHubAPI.authorizationCode(from: url, expectedState: "expected")
         #expect(code == "abc123")
     }
 
@@ -35,7 +36,7 @@ struct OAuthCallbackValidatorTests {
     func rejectsMismatchedState() {
         let url = URL(string: "myapp://oauth/vroid?code=abc123&state=tampered")!
         #expect(throws: VRoidHubError.self) {
-            try OAuthCallbackValidator.authorizationCode(from: url, expectedState: "expected")
+            try VRoidHubAPI.authorizationCode(from: url, expectedState: "expected")
         }
     }
 
@@ -43,7 +44,7 @@ struct OAuthCallbackValidatorTests {
     func mapsAccessDeniedToCancellation() {
         let url = URL(string: "myapp://oauth/vroid?error=access_denied&state=expected")!
         let error = #expect(throws: VRoidHubError.self) {
-            try OAuthCallbackValidator.authorizationCode(from: url, expectedState: "expected")
+            try VRoidHubAPI.authorizationCode(from: url, expectedState: "expected")
         }
         guard case .authenticationCancelled = error else {
             Issue.record("Expected authenticationCancelled, got \(String(describing: error))")
@@ -55,7 +56,7 @@ struct OAuthCallbackValidatorTests {
     func rejectsErrorResponseWithMismatchedState() {
         let url = URL(string: "myapp://oauth/vroid?error=access_denied&state=tampered")!
         let error = #expect(throws: VRoidHubError.self) {
-            try OAuthCallbackValidator.authorizationCode(from: url, expectedState: "expected")
+            try VRoidHubAPI.authorizationCode(from: url, expectedState: "expected")
         }
         guard case .invalidOAuthState = error else {
             Issue.record("Expected invalidOAuthState, got \(String(describing: error))")
@@ -67,7 +68,7 @@ struct OAuthCallbackValidatorTests {
     func failsWithoutCode() {
         let url = URL(string: "myapp://oauth/vroid?state=expected")!
         #expect(throws: VRoidHubError.self) {
-            try OAuthCallbackValidator.authorizationCode(from: url, expectedState: "expected")
+            try VRoidHubAPI.authorizationCode(from: url, expectedState: "expected")
         }
     }
 }

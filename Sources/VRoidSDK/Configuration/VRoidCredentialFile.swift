@@ -1,4 +1,5 @@
 public import Foundation
+public import VRoidSDKCore
 
 /// The `credential.json.bytes` file downloadable from the VRoid Hub
 /// application management page.

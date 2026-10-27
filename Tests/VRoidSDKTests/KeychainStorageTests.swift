@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 @Suite(.serialized)
 struct KeychainStorageTests {

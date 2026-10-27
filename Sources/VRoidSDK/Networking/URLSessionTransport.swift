@@ -1,4 +1,5 @@
 import Foundation
+import VRoidSDKCore
 
 struct URLSessionTransport: HTTPTransport {
     private let session: URLSession
@@ -7,7 +8,7 @@ struct URLSessionTransport: HTTPTransport {
         self.session = session
     }
 
-    func send(_ request: URLRequest, followRedirects: Bool) async throws -> HTTPResponse {
+    func send(_ request: URLRequest, followRedirects: Bool) async throws -> VRoidHubResponse {
         let delegate = followRedirects ? nil : RedirectBlockingDelegate()
         let (data, response) = try await session.data(for: request, delegate: delegate)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -19,7 +20,7 @@ struct URLSessionTransport: HTTPTransport {
                 headers[key] = value
             }
         }
-        return HTTPResponse(statusCode: httpResponse.statusCode, headers: headers, body: data)
+        return VRoidHubResponse(statusCode: httpResponse.statusCode, headers: headers, body: data)
     }
 }
 

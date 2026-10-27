@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// Normalized conditions of use for a character model.
 ///
@@ -192,5 +196,102 @@ extension VRoidCharacterModel {
             return VRoidUsageConditions(license: license)
         }
         return nil
+    }
+}
+
+extension VRoidUsageConditions {
+    /// A condition as the official guideline lists it
+    /// (https://developer.vroid.com/guidelines/conditions_of_use.html).
+    /// The application supplies the label of each case.
+    public enum GuidelineCondition: String, Sendable, CaseIterable {
+        case useAsAvatar
+        case violentExpressions
+        case sexualExpressions
+        case politicalOrReligiousUse
+        case antisocialOrHateUse
+        case corporateCommercialUse
+        case personalCommercialUse
+        case redistribution
+        case modification
+        case modifiedRedistribution
+        case credit
+    }
+
+    /// A value as the official guideline displays it. The application
+    /// supplies the wording; ``unknown(_:)`` is shown as is.
+    public enum GuidelineValue: Sendable, Equatable {
+        case allowed
+        case disallowed
+        /// Personal commercial use limited to nonprofit activities (VRM 0.x).
+        case nonprofitOnly
+        case required
+        case unnecessary
+        case unspecified
+        case unknown(String)
+    }
+
+    public struct GuidelineRow: Sendable, Equatable {
+        public let condition: GuidelineCondition
+        public let value: GuidelineValue
+    }
+
+    /// The conditions in the order, and with the values, that the official
+    /// guideline displays. Conditions that do not exist for the model's VRM
+    /// version are left out.
+    public var guidelineRows: [GuidelineRow] {
+        let rows: [(GuidelineCondition, GuidelineValue?)] = [
+            (.useAsAvatar, Self.guidelineValue(characterization)),
+            (.violentExpressions, Self.guidelineValue(violentExpression)),
+            (.sexualExpressions, Self.guidelineValue(sexualExpression)),
+            (.politicalOrReligiousUse, politicalOrReligiousUsage.map(Self.guidelineValue)),
+            (.antisocialOrHateUse, antisocialOrHateUsage.map(Self.guidelineValue)),
+            (.corporateCommercialUse, Self.guidelineValue(corporateCommercialUse)),
+            (.personalCommercialUse, Self.guidelineValue(personalCommercialUse)),
+            (.redistribution, Self.guidelineValue(redistribution)),
+            (.modification, Self.guidelineValue(modification)),
+            (.modifiedRedistribution, modifiedRedistribution.map(Self.guidelineValue)),
+            (.credit, Self.guidelineValue(credit)),
+        ]
+        return rows.compactMap { condition, value in
+            value.map { GuidelineRow(condition: condition, value: $0) }
+        }
+    }
+
+    private static func guidelineValue(_ permission: Permission) -> GuidelineValue {
+        switch permission {
+        case .allowed: .allowed
+        case .disallowed: .disallowed
+        case .unspecified: .unspecified
+        case .unknown(let raw): .unknown(raw)
+        }
+    }
+
+    private static func guidelineValue(_ credit: CreditRequirement) -> GuidelineValue {
+        switch credit {
+        case .required: .required
+        case .unnecessary: .unnecessary
+        case .unspecified: .unspecified
+        case .unknown(let raw): .unknown(raw)
+        }
+    }
+
+    /// The guideline displays avatar use as a binary: only "everyone" is an allow.
+    private static func guidelineValue(_ characterization: CharacterizationPermission) -> GuidelineValue {
+        switch characterization {
+        case .everyone: .allowed
+        case .authorOnly, .separatelyLicensedPersonOnly: .disallowed
+        case .unspecified: .unspecified
+        case .unknown(let raw): .unknown(raw)
+        }
+    }
+
+    private static func guidelineValue(_ use: PersonalCommercialUse) -> GuidelineValue {
+        switch use {
+        case .allowed, .profitAllowed: .allowed
+        case .nonprofitAllowed: .nonprofitOnly
+        case .disallowed: .disallowed
+        case .unspecified: .unspecified
+        case .unknown(let raw): .unknown(raw)
+        }
     }
 }

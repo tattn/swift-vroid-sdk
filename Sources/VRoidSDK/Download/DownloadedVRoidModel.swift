@@ -1,4 +1,5 @@
 import Foundation
+public import VRoidSDKCore
 
 /// A logical handle to a model file that the SDK has downloaded and cached.
 ///

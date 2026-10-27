@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+public import FoundationEssentials
+#else
 public import Foundation
+#endif
 
 /// A character model as returned by list endpoints.
 ///
@@ -91,6 +95,14 @@ public struct VRoidCharacterModelLicense: Decodable, Sendable {
         case violentExpression = "violent_expression"
         case corporateCommercialUse = "corporate_commercial_use"
         case personalCommercialUse = "personal_commercial_use"
+    }
+}
+
+extension VRoidCharacterModel {
+    /// The name to show. `name` is often nil on the live API; the character
+    /// name is the user-visible one in that case.
+    public var displayName: String {
+        name ?? character?.name ?? id
     }
 }
 

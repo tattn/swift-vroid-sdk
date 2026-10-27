@@ -28,7 +28,7 @@ intentionally independent and connect through plain `Data`/`URL` values.
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/tattn/swift-vroid-sdk.git", from: "0.1.0"),
+    .package(url: "https://github.com/tattn/swift-vroid-sdk.git", from: "0.2.0"),
 ]
 ```
 
@@ -167,6 +167,16 @@ if let conditions = model.usageConditions {
     case .unspecified: ... // the uploader has not set this condition
     case .unknown(let raw): ... // never treat unknown values as permission
     }
+}
+```
+
+To display them, `guidelineRows` lists the conditions in the order, and with
+the values, that the [official guideline](https://developer.vroid.com/guidelines/conditions_of_use.html)
+shows; supply a label for each condition and value:
+
+```swift
+for row in conditions.guidelineRows {
+    print(label(row.condition), text(row.value))
 }
 ```
 

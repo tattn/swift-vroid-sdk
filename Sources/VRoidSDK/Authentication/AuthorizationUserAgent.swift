@@ -1,5 +1,6 @@
 import AuthenticationServices
 import Foundation
+import VRoidSDKCore
 
 /// Presents the authorization page to the user and returns the callback URL.
 ///
@@ -106,28 +107,3 @@ final class LoopbackUserAgent: AuthorizationUserAgent {
     }
 }
 #endif
-
-enum OAuthCallbackValidator {
-    /// Extracts the authorization code from the callback URL, verifying `state`.
-    static func authorizationCode(from callbackURL: URL, expectedState: String) throws -> String {
-        guard let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false) else {
-            throw VRoidHubError.authenticationFailed
-        }
-        let queryItems = components.queryItems ?? []
-        func value(_ name: String) -> String? {
-            queryItems.first { $0.name == name }?.value
-        }
-        guard value("state") == expectedState else {
-            throw VRoidHubError.invalidOAuthState
-        }
-        if let error = value("error") {
-            throw error == "access_denied"
-                ? VRoidHubError.authenticationCancelled
-                : VRoidHubError.authenticationFailed
-        }
-        guard let code = value("code"), !code.isEmpty else {
-            throw VRoidHubError.authenticationFailed
-        }
-        return code
-    }
-}

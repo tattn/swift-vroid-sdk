@@ -2,6 +2,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct ClientDownloadTests {
     private struct StubModel: VRoidCharacterModelDownloadable {
@@ -31,13 +32,13 @@ struct ClientDownloadTests {
             """)
         }
         transport.route(method: "GET", path: "/api/download_licenses/\(licenseID)/download") { _ in
-            HTTPResponse(statusCode: 302, headers: ["Location": "https://s3.example.com/file.vrm?sig=abc"])
+            VRoidHubResponse(statusCode: 302, headers: ["Location": "https://s3.example.com/file.vrm?sig=abc"])
         }
         transport.route(method: "GET", path: "/file.vrm") { request in
             // The presigned URL must be fetched without API headers.
             #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
             #expect(request.value(forHTTPHeaderField: "X-Api-Version") == nil)
-            return HTTPResponse(statusCode: 200, body: fileBytes)
+            return VRoidHubResponse(statusCode: 200, body: fileBytes)
         }
     }
 
@@ -97,10 +98,10 @@ struct ClientDownloadTests {
             """)
         }
         fixture.transport.route(method: "GET", path: "/api/download_licenses/lic1/download") { _ in
-            HTTPResponse(statusCode: 302, headers: ["Location": "https://s3.example.com/file.vrm"])
+            VRoidHubResponse(statusCode: 302, headers: ["Location": "https://s3.example.com/file.vrm"])
         }
         fixture.transport.route(method: "GET", path: "/file.vrm") { _ in
-            HTTPResponse(statusCode: 200, body: Data("vrm-file".utf8))
+            VRoidHubResponse(statusCode: 200, body: Data("vrm-file".utf8))
         }
 
         _ = try await fixture.client.downloadModel(StubModel(characterModelID: "m1", latestVersionID: nil))
@@ -147,7 +148,7 @@ struct ClientDownloadTests {
         let counter = Counter()
         fixture.transport.route(method: "GET", path: "/api/account") { request in
             if counter.increment() == 1 {
-                return HTTPResponse(statusCode: 401)
+                return VRoidHubResponse(statusCode: 401)
             }
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer a2")
             return .json("""
@@ -173,7 +174,7 @@ struct ClientDownloadTests {
         // The stubbed license expires 2026-08-15 (epoch ~1.79e9).
         let beforeExpiry = Date(timeIntervalSince1970: 1_000_000_000)
         let afterExpiry = Date(timeIntervalSince1970: 2_000_000_000)
-        let token = OAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: .distantFuture)
+        let token = VRoidOAuthToken(accessToken: "a1", refreshToken: "r1", expiresAt: .distantFuture)
 
         let firstTransport = MockHTTPTransport()
         stubDownloadEndpoints(firstTransport, fileBytes: fileBytes)
@@ -268,13 +269,13 @@ struct ClientDownloadTests {
                 method: "GET",
                 path: "/api/download_licenses/lic\(index)/download"
             ) { _ in
-                HTTPResponse(
+                VRoidHubResponse(
                     statusCode: 302,
                     headers: ["Location": "https://s3.example.com/file-v\(index).vrm"]
                 )
             }
             fixture.transport.route(method: "GET", path: "/file-v\(index).vrm") { _ in
-                HTTPResponse(statusCode: 200, body: Data("v\(index)".utf8))
+                VRoidHubResponse(statusCode: 200, body: Data("v\(index)".utf8))
             }
         }
 

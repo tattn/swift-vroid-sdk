@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct DecodingTests {
     @Test
@@ -40,18 +41,16 @@ struct DecodingTests {
           "rand": "abc"
         }
         """
-        let response = HTTPResponse.json(json)
-        let client = APIClient(transport: MockHTTPTransport())
-        let (models, links) = try client.decodePayload([VRoidCharacterModel].self, from: response)
+        let response = VRoidHubResponse.json(json)
+        let api = VRoidHubAPI(credential: VRoidCredential(clientID: "cid", clientSecret: "secret"))
+        let page = try api.characterModels().result(from: response)
 
-        #expect(models.count == 1)
-        let model = models[0]
+        #expect(page.items.count == 1)
+        let model = page.items[0]
         #expect(model.id == "123")
         #expect(model.latestCharacterModelVersion?.isVRM1 == true)
         #expect(model.latestVersionID == "v1")
-
-        let next = client.resolve(link: links?.next)
-        #expect(next?.absoluteString == "https://hub.vroid.com/api/account/character_models?max_id=123&count=1")
+        #expect(page.next?.absoluteString == "https://hub.vroid.com/api/account/character_models?max_id=123&count=1")
     }
 
     @Test
@@ -69,7 +68,7 @@ struct DecodingTests {
           "rand": "abc"
         }
         """
-        let client = APIClient(transport: MockHTTPTransport())
+        let client = VRoidHubAPI(credential: VRoidCredential(clientID: "cid", clientSecret: "secret"))
         let (license, _) = try client.decodePayload(VRoidDownloadLicense.self, from: .json(json))
         #expect(license.id == "lic1")
         #expect(license.characterModelVersionID == "v1")
@@ -80,7 +79,7 @@ struct DecodingTests {
         let json = """
         { "data": null, "error": { "code": "INVALID_PARAMETER", "message": "bad" }, "_links": null }
         """
-        let client = APIClient(transport: MockHTTPTransport())
+        let client = VRoidHubAPI(credential: VRoidCredential(clientID: "cid", clientSecret: "secret"))
         let error = #expect(throws: VRoidHubError.self) {
             _ = try client.decodePayload(EmptyPayload.self, from: .json(json, statusCode: 422))
         }
@@ -95,8 +94,8 @@ struct DecodingTests {
     @Test
     func mapsRateLimitWithRetryAfterSeconds() {
         let now = Date(timeIntervalSince1970: 1_000_000)
-        let client = APIClient(transport: MockHTTPTransport(), dateProvider: FixedDateProvider(now: now))
-        let response = HTTPResponse(statusCode: 429, headers: ["Retry-After": "120"], body: Data())
+        let client = VRoidHubAPI(credential: VRoidCredential(clientID: "cid", clientSecret: "secret"), dateProvider: FixedDateProvider(now: now))
+        let response = VRoidHubResponse(statusCode: 429, headers: ["Retry-After": "120"], body: Data())
         let error = #expect(throws: VRoidHubError.self) {
             try client.validate(response)
         }
@@ -109,10 +108,10 @@ struct DecodingTests {
 
     @Test
     func mapsCommonHTTPStatuses() {
-        let client = APIClient(transport: MockHTTPTransport())
+        let client = VRoidHubAPI(credential: VRoidCredential(clientID: "cid", clientSecret: "secret"))
         func thrown(_ statusCode: Int) -> VRoidHubError? {
             do {
-                try client.validate(HTTPResponse(statusCode: statusCode))
+                try client.validate(VRoidHubResponse(statusCode: statusCode))
                 return nil
             } catch {
                 return error as? VRoidHubError

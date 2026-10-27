@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import Security
 import Synchronization
+import VRoidSDKCore
 
 /// Provides the symmetric key used to encrypt cached model files.
 protocol CacheKeyProviding: Sendable {

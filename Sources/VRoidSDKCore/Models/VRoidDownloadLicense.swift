@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+public import FoundationEssentials
+#else
 public import Foundation
+#endif
 
 /// A license required to download a character model file.
 public struct VRoidDownloadLicense: Decodable, Sendable, Identifiable {
@@ -6,6 +10,13 @@ public struct VRoidDownloadLicense: Decodable, Sendable, Identifiable {
     public let characterModelID: String
     public let characterModelVersionID: String
     public let expiresAt: Date
+
+    public init(id: String, characterModelID: String, characterModelVersionID: String, expiresAt: Date) {
+        self.id = id
+        self.characterModelID = characterModelID
+        self.characterModelVersionID = characterModelVersionID
+        self.expiresAt = expiresAt
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -15,7 +26,7 @@ public struct VRoidDownloadLicense: Decodable, Sendable, Identifiable {
     }
 }
 
-/// A model that can be passed to ``VRoidHubClient/downloadModel(_:)``.
+/// A model that can be passed to `VRoidHubClient.downloadModel(_:)` (in `VRoidSDK`).
 public protocol VRoidCharacterModelDownloadable: Sendable {
     var characterModelID: String { get }
     /// The latest version ID when known. Used to serve cache hits without a

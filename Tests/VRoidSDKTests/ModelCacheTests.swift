@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct ModelCacheTests {
     private func makeCache(
@@ -120,10 +121,6 @@ struct ModelCacheTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
         await cache.removeTemporaryFile(at: url)
         #expect(!FileManager.default.fileExists(atPath: url.path))
-
-        let leftover = try await cache.makeTemporaryPlaintextFile(data: Data("leftover".utf8))
-        await cache.purgeTemporaryDirectory()
-        #expect(!FileManager.default.fileExists(atPath: leftover.path))
     }
 
     @Test

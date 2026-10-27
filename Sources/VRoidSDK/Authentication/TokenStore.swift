@@ -1,12 +1,13 @@
 import Foundation
+import VRoidSDKCore
 import Security
 import Synchronization
 
 /// Persistence boundary for the OAuth token, injected so tests can run
 /// without Keychain entitlements.
 protocol TokenStore: Sendable {
-    func load() throws -> OAuthToken?
-    func save(_ token: OAuthToken) throws
+    func load() throws -> VRoidOAuthToken?
+    func save(_ token: VRoidOAuthToken) throws
     func clear() throws
 }
 
@@ -22,12 +23,12 @@ struct KeychainTokenStore: TokenStore {
         self.account = "\(AppIdentity.identifier).\(clientID)"
     }
 
-    func load() throws -> OAuthToken? {
+    func load() throws -> VRoidOAuthToken? {
         guard let data = try storage.data(for: account) else { return nil }
-        return try? JSONDecoder().decode(OAuthToken.self, from: data)
+        return try? JSONDecoder().decode(VRoidOAuthToken.self, from: data)
     }
 
-    func save(_ token: OAuthToken) throws {
+    func save(_ token: VRoidOAuthToken) throws {
         let data = try JSONEncoder().encode(token)
         try storage.set(data, for: account)
     }

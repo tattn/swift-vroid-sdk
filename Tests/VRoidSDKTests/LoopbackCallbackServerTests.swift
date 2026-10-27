@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 @Suite(.serialized)
 struct LoopbackCallbackServerTests {

@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// The response envelope shared by all VRoid Hub API endpoints.
 struct APIEnvelope<Payload: Decodable>: Decodable {
@@ -18,12 +22,12 @@ struct APIErrorPayload: Decodable {
     let message: String?
 }
 
-struct APILinks: Decodable {
-    let next: APILink?
+package struct APILinks: Decodable {
+    package let next: APILink?
 }
 
-struct APILink: Decodable {
-    let href: String
+package struct APILink: Decodable {
+    package let href: String
 }
 
 struct EmptyPayload: Decodable {}

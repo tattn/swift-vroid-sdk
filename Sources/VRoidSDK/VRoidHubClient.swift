@@ -1,4 +1,5 @@
 public import Foundation
+public import VRoidSDKCore
 
 /// The entry point of the SDK: authentication, VRoid Hub API access, model
 /// download, and the encrypted model cache.
@@ -17,11 +18,10 @@ public actor VRoidHubClient {
     }
 
     private let configuration: VRoidHubConfiguration
-    private let api: AuthenticatedAPIClient
+    private let client: AuthenticatedAPIClient
     private let oauth: OAuthService
     private let tokenManager: TokenManager
     private let cache: ModelCache
-    private let downloader: ModelDownloader
     private let userAgentOverride: (any AuthorizationUserAgent)?
 
     private var inFlightDownloads: [DownloadKey: Task<DownloadedVRoidModel, any Error>] = [:]
@@ -44,27 +44,22 @@ public actor VRoidHubClient {
         cacheDirectory: URL,
         cacheKeyProvider: any CacheKeyProviding,
         dateProvider: any DateProviding,
-        baseURL: URL = APIClient.defaultBaseURL,
+        baseURL: URL = VRoidHubAPI.defaultBaseURL,
         userAgent: (any AuthorizationUserAgent)? = nil
     ) {
         self.configuration = configuration
-        let apiClient = APIClient(baseURL: baseURL, transport: transport, dateProvider: dateProvider)
-        let oauth = OAuthService(
-            api: apiClient,
-            credential: configuration.credential,
-            dateProvider: dateProvider
-        )
+        let api = VRoidHubAPI(credential: configuration.credential, baseURL: baseURL, dateProvider: dateProvider)
+        let oauth = OAuthService(api: api, transport: transport)
         self.oauth = oauth
         let tokenManager = TokenManager(store: tokenStore, oauth: oauth, dateProvider: dateProvider)
         self.tokenManager = tokenManager
-        self.api = AuthenticatedAPIClient(api: apiClient, tokenManager: tokenManager)
+        self.client = AuthenticatedAPIClient(api: api, transport: transport, tokenManager: tokenManager)
         self.cache = ModelCache(
             directory: cacheDirectory,
             configuration: configuration.cache,
             cryptor: ModelCacheCryptor(keyProvider: cacheKeyProvider),
             dateProvider: dateProvider
         )
-        self.downloader = ModelDownloader(api: api, transport: transport)
         self.userAgentOverride = userAgent
     }
 
@@ -86,7 +81,7 @@ public actor VRoidHubClient {
             effectiveRedirectURI = $0
             return try oauth.authorizationURL(pkce: pkce, state: state, redirectURI: $0)
         }
-        let code = try OAuthCallbackValidator.authorizationCode(
+        let code = try VRoidHubAPI.authorizationCode(
             from: callbackURL,
             expectedState: state
         )
@@ -124,28 +119,27 @@ public actor VRoidHubClient {
     // MARK: - API
 
     public func account() async throws -> VRoidAccount {
-        try await api.get("/api/account")
+        try await client.perform(api.account())
     }
 
     /// The signed-in user's own character models.
     public func characterModels(
         options: VRoidCharacterModelsOptions = VRoidCharacterModelsOptions()
     ) async throws -> VRoidPage<VRoidCharacterModel> {
-        try await api.page("/api/account/character_models", query: options.queryItems)
+        try await client.perform(api.characterModels(options: options))
     }
 
     /// Fetches the page referenced by ``VRoidPage/next`` of any listing of
     /// character models.
     public func characterModels(pageAt url: URL) async throws -> VRoidPage<VRoidCharacterModel> {
-        try await api.page(at: url)
+        try await client.perform(api.characterModels(pageAt: url))
     }
 
     /// Models the user hearted on VRoid Hub that are available to this
     /// application. The official guidelines require presenting each model's
     /// conditions of use before it is used.
     public func hearts(options: VRoidHeartsOptions = VRoidHeartsOptions()) async throws -> VRoidPage<VRoidCharacterModel> {
-        let applicationID = URLQueryItem(name: "application_id", value: configuration.credential.clientID)
-        return try await api.page("/api/hearts", query: [applicationID] + options.queryItems)
+        try await client.perform(api.hearts(options: options))
     }
 
     /// Character models picked by the VRoid Hub staff.
@@ -156,27 +150,23 @@ public actor VRoidHubClient {
     public func staffPicks(
         options: VRoidStaffPicksOptions = VRoidStaffPicksOptions()
     ) async throws -> VRoidPage<VRoidCharacterModel> {
-        unwrapStaffPicks(try await api.page("/api/staff_picks", query: options.queryItems))
+        try await client.perform(api.staffPicks(options: options))
     }
 
     /// Fetches the page referenced by a staff picks `next` URL.
     public func staffPicks(pageAt url: URL) async throws -> VRoidPage<VRoidCharacterModel> {
-        unwrapStaffPicks(try await api.page(at: url))
-    }
-
-    private func unwrapStaffPicks(_ page: VRoidPage<VRoidStaffPick>) -> VRoidPage<VRoidCharacterModel> {
-        VRoidPage(items: page.items.compactMap(\.characterModel), next: page.next)
+        try await client.perform(api.staffPicks(pageAt: url))
     }
 
     /// Searches public character models by keyword.
     public func searchCharacterModels(
         options: VRoidCharacterModelSearchOptions
     ) async throws -> VRoidPage<VRoidCharacterModel> {
-        try await api.page("/api/search/character_models", query: options.queryItems)
+        try await client.perform(api.searchCharacterModels(options: options))
     }
 
     public func characterModel(id: String) async throws -> VRoidCharacterModelDetail {
-        try await api.get("/api/character_models/\(id)")
+        try await client.perform(api.characterModel(id: id))
     }
 
     // MARK: - Lazy pagination
@@ -225,11 +215,11 @@ public actor VRoidHubClient {
     // MARK: - Download licenses
 
     public func downloadLicense(id: String) async throws -> VRoidDownloadLicense {
-        try await api.get("/api/download_licenses/\(id)")
+        try await client.perform(api.downloadLicense(id: id))
     }
 
     public func deleteDownloadLicense(id: String) async throws {
-        try await api.delete("/api/download_licenses/\(id)")
+        try await client.perform(api.deleteDownloadLicense(id: id))
     }
 
     // MARK: - Model download
@@ -297,10 +287,7 @@ public actor VRoidHubClient {
             return cached
         }
 
-        let license: VRoidDownloadLicense = try await api.post(
-            "/api/download_licenses",
-            formBody: ["character_model_id": modelID]
-        )
+        let license = try await client.perform(api.issueDownloadLicense(characterModelID: modelID))
 
         // The license response reveals and authorizes the current version. If
         // those exact encrypted bytes are cached, keep the new license and
@@ -309,23 +296,18 @@ public actor VRoidHubClient {
             return DownloadedVRoidModel(downloadLicense: license)
         }
 
-        let data = try await downloader.downloadModelFile(licenseID: license.id)
+        let file = try await client.perform(api.modelFile(downloadLicenseID: license.id))
+        let data = try await client.perform(file)
         try await cache.store(modelData: data, license: license)
         return DownloadedVRoidModel(downloadLicense: license)
     }
 
     private func cachedDownloadedModel(modelID: String, versionID: String) async -> DownloadedVRoidModel? {
-        guard let entry = await cache.validEntry(modelID: modelID, versionID: versionID) else {
-            return nil
-        }
-        return DownloadedVRoidModel(
-            downloadLicense: VRoidDownloadLicense(
-                id: entry.downloadLicenseID,
-                characterModelID: modelID,
-                characterModelVersionID: versionID,
-                expiresAt: entry.downloadLicenseExpiresAt
-            )
-        )
+        await cache.validEntry(modelID: modelID, versionID: versionID).map(DownloadedVRoidModel.init)
+    }
+
+    private var api: VRoidHubAPI {
+        client.api
     }
 
     @MainActor

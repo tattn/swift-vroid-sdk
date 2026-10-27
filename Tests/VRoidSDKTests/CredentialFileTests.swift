@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct CredentialFileTests {
     private static func json(

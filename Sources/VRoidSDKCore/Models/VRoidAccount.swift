@@ -1,4 +1,8 @@
+#if canImport(FoundationEssentials)
+import FoundationEssentials
+#else
 import Foundation
+#endif
 
 /// The authenticated user's account (`GET /api/account`).
 public struct VRoidAccount: Decodable, Sendable {

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VRoidSDK
+@testable import VRoidSDKCore
 
 struct ListEndpointsTests {
     private static func modelListJSON(ids: [String], nextHref: String? = nil) -> String {

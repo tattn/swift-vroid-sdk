@@ -1,4 +1,5 @@
 import Foundation
+import VRoidSDKCore
 
 /// Owns the OAuth token lifecycle: persistence, expiration checks, and
 /// refresh coalescing (concurrent callers share a single refresh request).
@@ -7,9 +8,9 @@ actor TokenManager {
     private let oauth: OAuthService
     private let dateProvider: any DateProviding
 
-    private var cachedToken: OAuthToken?
+    private var cachedToken: VRoidOAuthToken?
     private var didLoadFromStore = false
-    private var refreshTask: Task<OAuthToken, any Error>?
+    private var refreshTask: Task<VRoidOAuthToken, any Error>?
 
     init(store: any TokenStore, oauth: OAuthService, dateProvider: any DateProviding) {
         self.store = store
@@ -17,7 +18,7 @@ actor TokenManager {
         self.dateProvider = dateProvider
     }
 
-    func currentToken() throws -> OAuthToken? {
+    func currentToken() throws -> VRoidOAuthToken? {
         if !didLoadFromStore {
             cachedToken = try store.load()
             didLoadFromStore = true
@@ -42,7 +43,7 @@ actor TokenManager {
         try await refreshCoalesced(staleAccessToken: staleAccessToken).accessToken
     }
 
-    func replace(_ token: OAuthToken) throws {
+    func replace(_ token: VRoidOAuthToken) throws {
         try store.save(token)
         cachedToken = token
         didLoadFromStore = true
@@ -56,7 +57,7 @@ actor TokenManager {
         try store.clear()
     }
 
-    private func refreshCoalesced(staleAccessToken: String) async throws -> OAuthToken {
+    private func refreshCoalesced(staleAccessToken: String) async throws -> VRoidOAuthToken {
         guard let current = try currentToken() else {
             throw VRoidHubError.unauthorized
         }
